@@ -7,6 +7,10 @@ Includes error pop-ups.
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
+from threading import Thread
+import time
+import requests
+from bs4 import BeautifulSoup
 
 
 class Style(ttk.Style):
@@ -36,7 +40,7 @@ class App:
 
 class Popup(tk.Toplevel):
     """
-    Popup class for displaying possible errors
+    Popup class for displaying possible errors (messageboxes make redunaant?)
     """
     def __init__(self, error_msg=""):
         super().__init__()
@@ -69,14 +73,16 @@ class JobFinder(Tab):
         self.__keywords = []
         self.__entries = []
         self.__search_button = None
+        self.__dt_check = tk.IntVar()
+        self.__mn_check = tk.IntVar()
 
         self.__label1 = tk.Label(self, text="Select which sites to scrape")
         self.__label1.grid(row=0, column=0, columnspan=2, pady=self.__PADDING, padx=self.__PADDING)
 
-        self.__check_duunitori = tk.Checkbutton(self, text="Duunitori")
+        self.__check_duunitori = tk.Checkbutton(self, text="Duunitori", variable=self.__dt_check)
         self.__check_duunitori.grid(row=1, column=0, pady=self.__PADDING, padx=self.__PADDING)
 
-        self.__check_monster = tk.Checkbutton(self, text="Monster")
+        self.__check_monster = tk.Checkbutton(self, text="Monster", variable=self.__mn_check)
         self.__check_monster.grid(row=1, column=1, pady=self.__PADDING, padx=self.__PADDING)
 
         self.__label2 = tk.Label(self, text="Number of keywords: ")
@@ -113,15 +119,61 @@ class JobFinder(Tab):
                 self.__search_button.destroy()
             self.__search_button = tk.Button(self, text="Search", command=self.scrape)
             self.__search_button.grid(row=4 + num_of_entries, column=0, columnspan=3, pady=self.__PADDING, padx=self.__PADDING)
+            self.__search_button.bind("<Return>", self.searchButtonCallback)
 
     def scrape(self):
-        print("test")
+        # Clear keywords
+        self.__keywords = []
+        # Get keywords from each entry
+        for i in range(len(self.__entries)):
+            self.__keywords.append(self.__entries[i].get())
+        if self.__dt_check:
+            Duunitoriscraper = DuunitoriScrape()
+        if self.__mn_check:
+            Monsterscraper = MonsterScrape()
 
     def comboCallback(self, event): # even if event is not used, it must be placed since combobox callback gives it Initi
         self.addEntries()
 
+    def searchButtonCallback(self, event):
+        self.scrape()
+
     def getSearchButton(self) -> object:
         return self.__search_button
+
+
+class DuunitoriScrape(tk.Toplevel):
+    def __init__(self):
+        super().__init__()
+
+        self.wm_title("Duunitori Scraper")
+
+        page_counter = self.numOfPages()
+        print(page_counter)
+        self.__progressbar = ttk.Progressbar(self, orient="horizontal", length=page_counter*3, mode="determinate").pack()
+        self.__cancelButton = tk.Button(self, text="Cancel")
+        self.__cancelButton.pack()
+
+    def numOfPages(self):
+        url = "https://duunitori.fi/tyopaikat?haku=ohjelmointi+ja+ohjelmistokehitys"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.content, "html.parser")
+        page_counter = soup.find_all("a", class_="pagination__pagenum")
+        page_counter = page_counter[-1]
+        page_counter = str(page_counter)
+        # Non-pythonic combination to get the final page number from the html element
+        page_counter = page_counter.split("=")[-1].split('"')[0]
+        page_counter = int(page_counter)
+        return page_counter
+
+
+class MonsterScrape(tk.Toplevel):
+    def __init__(self):
+        super().__init__()
+
+        self.wm_title("Monster Scraper")
+        self.__cancelButton = tk.Button(self, text="Cancel")
+        self.__cancelButton.pack()
 
 
 class AlkoScraper(Tab):
