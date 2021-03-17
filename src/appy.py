@@ -33,9 +33,6 @@ class App:
 
         self.__root.mainloop()
 
-    def errorMsg(self, msg=""):
-        Popup(msg)
-
 
 class Popup(tk.Toplevel):
     """
@@ -71,6 +68,7 @@ class JobFinder(Tab):
         self.__PADDING = 5
         self.__keywords = []
         self.__entries = []
+        self.__search_button = None
 
         self.__label1 = tk.Label(self, text="Select which sites to scrape")
         self.__label1.grid(row=0, column=0, columnspan=2, pady=self.__PADDING, padx=self.__PADDING)
@@ -84,33 +82,46 @@ class JobFinder(Tab):
         self.__label2 = tk.Label(self, text="Number of keywords: ")
         self.__label2.grid(row=2, column=0, pady=self.__PADDING, padx=self.__PADDING)
 
-        self.__numberOfKeywords = ttk.Combobox(self, values=[i for i in range(5)])
+        self.__numberOfKeywords = ttk.Combobox(self, values=[i for i in range(1, 6)])
         self.__numberOfKeywords.grid(row=2, column=1)
         self.__numberOfKeywords.current(0)
-        self.__numberOfKeywords.bind("<<ComboboxSelected>>", self.comboCallBack)
-
-        self.__next_button = ttk.Button(self, text="Next", command=self.addEntries)
-        self.__next_button.grid(row=3, column=0, columnspan=3, pady=self.__PADDING, padx=self.__PADDING)
+        self.__numberOfKeywords.bind("<<ComboboxSelected>>", self.comboCallback)    # If selected by clicking
+        self.__numberOfKeywords.bind("<Return>", self.comboCallback)                # Or pressing enter
 
     def addEntries(self):
+        """
+        Adds entries based on the number selected in self.__numberOfKeyWords.
+        """
         num_of_entries = self.__numberOfKeywords.get()
+        # Destroy existing widgets if there are any
+        if len(self.__entries) != 0:
+            for entry in self.__entries:
+                entry.destroy()
+        # try to convert entered value to an int for the for loop
         try:
             num_of_entries = int(num_of_entries)
         except Exception:
-            # Popup("Please enter an integer above")
             messagebox.showerror("Error", "Invalid input")
         else:
             for i in range(num_of_entries):
-                self.__entries.append(tk.Entry(self).grid(row=i+4, column=0, columnspan=3, pady=self.__PADDING, padx=self.__PADDING))
+                entry = tk.Entry(self)
+                entry.grid(row=i+4, column=0, columnspan=3, pady=self.__PADDING, padx=self.__PADDING)
+                self.__entries.append(entry)
         finally:
+            # Clear existing button
+            if self.getSearchButton() != None:
+                self.__search_button.destroy()
             self.__search_button = tk.Button(self, text="Search", command=self.scrape)
             self.__search_button.grid(row=4 + num_of_entries, column=0, columnspan=3, pady=self.__PADDING, padx=self.__PADDING)
 
     def scrape(self):
-        pass
+        print("test")
 
-    def comboCallBack(self, event): # even if event is not used, it must be placed since combobox callback gives it Initi
-        print("Combo callback")
+    def comboCallback(self, event): # even if event is not used, it must be placed since combobox callback gives it Initi
+        self.addEntries()
+
+    def getSearchButton(self) -> object:
+        return self.__search_button
 
 
 class AlkoScraper(Tab):
