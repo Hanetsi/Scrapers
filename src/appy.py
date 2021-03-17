@@ -73,8 +73,9 @@ class JobFinder(Tab):
         self.__keywords = []
         self.__entries = []
         self.__search_button = None
-        self.__dt_check = tk.IntVar()
-        self.__mn_check = tk.IntVar()
+        self.__dt_check = tk.BooleanVar()
+        self.__dt_check.set(True)
+        self.__mn_check = tk.BooleanVar()
 
         self.__label1 = tk.Label(self, text="Select which sites to scrape")
         self.__label1.grid(row=0, column=0, columnspan=2, pady=self.__PADDING, padx=self.__PADDING)
@@ -106,6 +107,7 @@ class JobFinder(Tab):
         # try to convert entered value to an int for the for loop
         try:
             num_of_entries = int(num_of_entries)
+        # A broad exception, doesn't really matter since it's only checking if input is valid
         except Exception:
             messagebox.showerror("Error", "Invalid input")
         else:
@@ -127,9 +129,9 @@ class JobFinder(Tab):
         # Get keywords from each entry
         for i in range(len(self.__entries)):
             self.__keywords.append(self.__entries[i].get())
-        if self.__dt_check:
-            Duunitoriscraper = DuunitoriScrape()
-        if self.__mn_check:
+        if self.__dt_check.get():
+            Duunitoriscraper = DuunitoriScrape(self.__keywords)
+        if self.__mn_check.get():
             Monsterscraper = MonsterScrape()
 
     def comboCallback(self, event): # even if event is not used, it must be placed since combobox callback gives it Initi
@@ -141,18 +143,26 @@ class JobFinder(Tab):
     def getSearchButton(self) -> object:
         return self.__search_button
 
+    def getKWs(self):
+        return self.__keywords
+
 
 class DuunitoriScrape(tk.Toplevel):
-    def __init__(self):
+    def __init__(self, keywords):
         super().__init__()
+
+        self.__keywords = keywords
 
         self.wm_title("Duunitori Scraper")
 
-        page_counter = self.numOfPages()
-        print(page_counter)
-        self.__progressbar = ttk.Progressbar(self, orient="horizontal", length=page_counter*3, mode="determinate").pack()
+        self.__page_counter = self.numOfPages()
+        self.__progressbar = ttk.Progressbar(self, orient="horizontal", length=self.__page_counter*3, mode="determinate")
+        self.__progressbar.pack()
         self.__cancelButton = tk.Button(self, text="Cancel")
         self.__cancelButton.pack()
+
+        thread = Thread(target=self.fun)
+        thread.start()
 
     def numOfPages(self):
         url = "https://duunitori.fi/tyopaikat?haku=ohjelmointi+ja+ohjelmistokehitys"
@@ -165,6 +175,31 @@ class DuunitoriScrape(tk.Toplevel):
         page_counter = page_counter.split("=")[-1].split('"')[0]
         page_counter = int(page_counter)
         return page_counter
+
+    def fun(self):
+        jobs = []
+        for i in range(1, self.__page_counter + 1, 1):
+            time.sleep(0.05)
+            # Set url for given page number
+            url = "https://duunitori.fi/tyopaikat?haku=ohjelmointi+ja+ohjelmistokehitys&sivu=" + str(i)
+            # Fetch the site
+            response = requests.get(url)
+            # Turn it into soup using html parser
+            soup = BeautifulSoup(response.content, "html.parser")
+            # Find the element in which the search results reside
+            results = soup.find_all("a", class_="job-box__hover gtm-search-result")
+            for keyword in self.__keywords:
+                for result in results:
+                    if keyword in result["href"]:
+                        jobs.append(result)
+                        print("Found!")
+
+            self.__progressbar["value"] = i * 3
+            self.update_idletasks()
+            self.__progressbar.pack()
+
+        for job in jobs:
+            print(job["href"])
 
 
 class MonsterScrape(tk.Toplevel):
