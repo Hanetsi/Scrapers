@@ -5,6 +5,7 @@ Includes error pop-ups.
 """
 
 import tkinter as tk
+from tkinter import filedialog
 from tkinter import ttk
 from tkinter import messagebox
 from threading import Thread
@@ -17,32 +18,58 @@ import webbrowser
 
 class Style(ttk.Style):
     """
-    Style class for the main window to use
+    Style class for the main window to use, yet to be implemented
     """
     def __init__(self):
         super().__init__()
 
 
-class App:
+class App(tk.Tk):
     """
     Main application window
     """
+    # Icon path as a variable for popups etc. to use
     icon_path = os.path.dirname(os.getcwd())
     icon_path += "/Images/icon.ico"
 
-    def __init__(self):
-        self.__root = tk.Tk()
-        self.__root.title("Scrapers Extravaganza")
-        self.__root.iconbitmap(App.icon_path)
+    settings = {"padding": 5}
 
-        self.__tabControl = ttk.Notebook(self.__root)
+    def __init__(self):
+        super().__init__()
+        self.title("Scrapers Extravaganza")
+        self.iconbitmap(App.icon_path)
+
+        self.__mainMenu = tk.Menu(self)
+        self.config(menu=self.__mainMenu)
+
+        # File menu
+        self.__fileMenu = tk.Menu(self.__mainMenu, tearoff=False)
+        self.__mainMenu.add_cascade(label="File", menu=self.__fileMenu)
+        self.__duunitoriMenu = tk.Menu(self.__fileMenu, tearoff=False)
+        self.__fileMenu.add_cascade(label="Duunitori scraper", menu=self.__duunitoriMenu)
+        self.__alkoMenu = tk.Menu(self.__fileMenu, tearoff=False)
+        self.__fileMenu.add_cascade(label="Alko prices", menu=self.__alkoMenu)
+        self.__toriMenu = tk.Menu(self.__fileMenu, tearoff=False)
+        self.__fileMenu.add_cascade(label="Tori.fi", menu=self.__toriMenu)
+
+        # Duunitori menu
+        self.__duunitoriMenu.add_command(label="New search profile", command=DuunitoriScraper.openSettings)
+        self.__duunitoriMenu.add_command(label="Open search profile", command=DuunitoriScraper.loadSearch)
+
+        # TODO Implement help documentation
+        # Main menu button for help
+        self.__mainMenu.add_command(label="Help")
+
+        # Notebook widget to use as tab control in the window
+        self.__tabControl = ttk.Notebook(self)
         self.__tabControl.pack(expand=1, fill="both")
 
-        self.__jobFinder = JobFinder(self.__tabControl)  # pass tabControl as target object
+        # Create the 3 tabs and pass tab control for target refence
+        self.__duunitoriScraper = DuunitoriScraper(self.__tabControl)
         self.__alko = AlkoScraper(self.__tabControl)
         self.__tori = ToriScraper(self.__tabControl)
 
-        self.__root.mainloop()
+        self.mainloop()
 
 
 class Popup(tk.Toplevel):
@@ -62,123 +89,34 @@ class Popup(tk.Toplevel):
 
 class Tab(ttk.Frame):
     """
-    Super class for tabs, inherits from ttk Frame widget
+    Super class for tabs, inherits from ttk Frame widget. Basically handles the tab created as a frame into tab control
     """
     def __init__(self, target=None, name=None):
         super().__init__(target)
         target.add(self, text=name)
 
 
-class JobFinder(Tab):
-    """
-    Job finder tab
-    """
+class DuunitoriScraper(Tab):
+    # TODO implement default profiles or previous profiles or anything else
+    profile = {"keywords": ["python"],
+               "locations": ["salo"],
+               "searchDesc": False,
+               "includeAll": False
+               }
+
     def __init__(self, target):
-        super().__init__(target, "Job Finder")
+        super().__init__(target, "Duunitori Scraper")
 
-        self.__PADDING = 5
-        self.__keywords = []
-        self.__entries = []
-        self.__search_button = None
-        self.__dt_check = tk.BooleanVar()
-        self.__dt_check.set(True)
-        self.__mn_check = tk.BooleanVar()
-
-        self.__label1 = tk.Label(self, text="Select which sites to scrape")
-        self.__label1.grid(row=0, column=0, columnspan=2,
-                           pady=self.__PADDING, padx=self.__PADDING)
-
-        self.__check_duunitori = tk.Checkbutton(self, text="Duunitori", variable=self.__dt_check)
-        self.__check_duunitori.grid(row=1, column=0,
-                                    pady=self.__PADDING, padx=self.__PADDING)
-
-        self.__check_monster = tk.Checkbutton(self, text="Monster", variable=self.__mn_check)
-        self.__check_monster.grid(row=1, column=1,
-                                  pady=self.__PADDING, padx=self.__PADDING)
-
-        self.__label2 = tk.Label(self, text="Number of keywords: ")
-        self.__label2.grid(row=2, column=0,
-                           pady=self.__PADDING, padx=self.__PADDING)
-
-        self.__numberOfKeywords = ttk.Combobox(self, values=[i for i in range(1, 6)])
-        self.__numberOfKeywords.grid(row=2, column=1)
-        self.__numberOfKeywords.current(0)
-        self.__numberOfKeywords.bind("<<ComboboxSelected>>", self.comboCallback)    # If selected by clicking
-        self.__numberOfKeywords.bind("<Return>", self.comboCallback)                # Or pressing enter
-
-    def addEntries(self):
-        """
-        Adds entries based on the number selected in self.__numberOfKeyWords.
-        """
-        num_of_entries = self.__numberOfKeywords.get()
-        # Destroy existing widgets if there are any
-        if len(self.__entries) != 0:
-            for entry in self.__entries:
-                entry.destroy()
-        # try to convert entered value to an int for the for loop
-        try:
-            num_of_entries = int(num_of_entries)
-        # A broad exception, doesn't really matter since it's only checking if input is valid
-        except ValueError:
-            messagebox.showerror("Error", "Couldn't convert input to integer")
-        except:
-            messagebox.showerror("Error", "Error")
-        else:
-            for i in range(num_of_entries):
-                entry = tk.Entry(self)
-                entry.grid(row=i+4, column=0, columnspan=3,
-                           pady=self.__PADDING, padx=self.__PADDING)
-                self.__entries.append(entry)
-        finally:
-            # Clear existing button
-            if self.getSearchButton() is not None:
-                self.__search_button.destroy()
-            self.__search_button = tk.Button(self, text="Search", command=self.scrape)
-            self.__search_button.grid(row=4 + num_of_entries, column=0, columnspan=3,
-                                      pady=self.__PADDING, padx=self.__PADDING)
-            self.__search_button.bind("<Return>", self.searchButtonCallback)
-
-    def scrape(self):
-        # Clear keywords
-        self.__keywords = []
-        # Get keywords from each entry
-        for i in range(len(self.__entries)):
-            keyword = self.__entries[i].get()
-            self.__keywords.append(keyword)
-        if self.__dt_check.get():
-            Duunitoriscraper = DuunitoriScrape(self.__keywords)
-        if self.__mn_check.get():
-            Monsterscraper = MonsterScrape()
-
-    def comboCallback(self, event):  # even if event is not used, it must be placed since combobox callback gives it Initi
-        self.addEntries()
-
-    def searchButtonCallback(self, event):
-        self.scrape()
-
-    def getSearchButton(self) -> object:
-        return self.__search_button
-
-    def getKWs(self):
-        return self.__keywords
-
-
-class DuunitoriScrape(tk.Toplevel):
-    """
-    Scraper for Duunitori.fi. More efficient way would be to insert keywords into query in url.
-    But this is just done for learning more about scraping html.
-    """
-    def __init__(self, keywords):
-        super().__init__()
-
-        self.__keywords = keywords
+        # TODO get rid of these
         self.__links = []
+        self.__keywords = ["python"]
 
-        self.wm_title("Duunitori Scraper")
-        self.wm_iconbitmap(App.icon_path)
+        # Frame for holding the job listings and it's scrollbar
+        self.__resultFrame = tk.Frame(self)
+        self.__resultFrame.grid(row=0, column=0, columnspan=3)
 
         # Treeview widget for holding all the found job listings
-        self.__job_list = ttk.Treeview(self)
+        self.__job_list = ttk.Treeview(self.__resultFrame)
         self.__job_list["columns"] = ("desc")
         self.__job_list.column("#0", width=100, minwidth=20)
         self.__job_list.column("desc", anchor="w", width=300)
@@ -186,27 +124,73 @@ class DuunitoriScrape(tk.Toplevel):
         self.__job_list.heading("#0", text="Company")
         self.__job_list.heading("desc", text="Job description", anchor="w")
 
-        # Include a scrollbar but dont pack it yet
-        self.__scrollbar = ttk.Scrollbar(self)
+        # Include a scrollbar
+        self.__scrollbar = ttk.Scrollbar(self.__resultFrame)
+        # Set scrollbar to command job lists vertical view
         self.__scrollbar.configure(command=self.__job_list.yview)
         self.__job_list.configure(yscrollcommand=self.__scrollbar.set)
-
+        # Pack 'em
         self.__scrollbar.pack(side="right", fill="y")
         self.__job_list.pack()
 
+        # Event binding to make jobs in the job list clickable
         self.__job_list.bind("<Double-Button-1>", self.openLink)
 
-        self.__page_counter = self.numOfPages()
-        self.__progressbar = ttk.Progressbar(self, orient="horizontal", length=self.__page_counter*3,
-                                             maximum=self.__page_counter, mode="determinate")
-        self.__progressbar.pack()
-        self.__cancelButton = tk.Button(self, text="Cancel")
-        self.__cancelButton.pack()
+        self.__startButton = tk.Button(self, text="Start", command=self.startScrape)
+        self.__startButton.grid(row=1, column=0)
 
-        thread = Thread(target=self.fun)
-        thread.start()
+        # Create the cancel button, progress bar, and done label, but don't pack
+        self.__page_counter = self.numOfPages()
+        self.__progressbar = ttk.Progressbar(self, orient="horizontal", length=50,
+                                             maximum=self.__page_counter, mode="determinate")
+
+        self.__doneLabel = tk.Label(self, text="Done!")
+        self.__cancelButton = tk.Button(self, text="Cancel", command=self.cancelSearch)
+
+    @staticmethod
+    def loadSearch():
+        """
+        Method for loading existing search profiles
+        """
+        # TODO error handling
+        # Get the path for profiles folder
+        path = os.path.dirname(os.getcwd()) + "/search_profiles"
+        # Open file
+        file = filedialog.askopenfile(mode="r", initialdir=path, title="Select search profile", filetypes=((".txt", "*.txt"),))
+        if file:  # Only if a file was opened
+            content = file.readlines()
+            file.close()
+            # First 3 splits lines to lists that contains the key: value pairs
+            content = [line.split("=") for line in content]
+            content = [[elem.strip("\n") for elem in line] for line in content]
+            content = [[elem.split(",") for elem in line] for line in content]
+            # Since the splits introduce unneccessary list layers into keywords, using some list comprehension to get rid of them
+            keys = [[elem[0] for elem in inner_content][0] for inner_content in content]
+            # Values are easy to fetch, just grab the latter data within and element
+            values = [elem[1] for elem in content]
+            # Zip makes keys and values into a tuple, that dict can make a dictionary from
+            profile = dict(zip(keys, values))
+            # Load the parsed profile into class variable
+            DuunitoriScraper.profile = profile
+
+    @staticmethod
+    def openSettings():
+        """
+        Just a pass through
+        """
+        settingsWindow = DuunitoriScraperSettings()
+
+    def cancelSearch(self):
+        # TODO
+        """
+        Cancel the search
+        """
+        pass
 
     def numOfPages(self):
+        """
+        Method to get the number of pages to scrape based on keywords etc.
+        """
         url = self.url()
         response = requests.get(url)
         soup = BeautifulSoup(response.content, "html.parser")
@@ -218,14 +202,25 @@ class DuunitoriScrape(tk.Toplevel):
         page_counter = int(page_counter)
         return page_counter
 
-    def fun(self):
-        # Once this function is done, remove scrollbar and button and insert a scrollable treeview with hyperlink binding
+    def startScrape(self):
+        """
+        Starts the scraping in another thread to allow windows to function relatively normally.
+        """
+        thread = Thread(target=self.scrape)
+        thread.start()
+
+    def scrape(self):
+        # TODO UPDATE THIS
+        """
+        The actual scraping part.
+        """
+        # Set the first iid for the treeview
         iid = 0
+        self.__progressbar.grid(row=1, column=2)
         for i in range(1, self.__page_counter + 1, 1):
             time.sleep(0.05)
             # Set url for given page number
             url = self.url() + "&sivu=" + str(i)
-            print(url)
             # Fetch the site
             response = requests.get(url)
             # Turn it into soup using html parser
@@ -240,12 +235,13 @@ class DuunitoriScrape(tk.Toplevel):
                 iid += 1
             self.__progressbar["value"] = i
             self.update_idletasks()
-            self.__progressbar.pack()
-
-        self.__progressbar.destroy()
-        self.__cancelButton.destroy()
+            self.__progressbar.update()
+        # Once done
+        self.__progressbar.grid_forget()
+        self.__doneLabel.grid(row=1, column=2)
 
     def url(self):
+        # TODO Update with scrape?
         """
         Method injects given keywords into url query. Also searches the description
         """
@@ -260,6 +256,7 @@ class DuunitoriScrape(tk.Toplevel):
         return url
 
     def parseHref(self, href):
+        # TODO replace with getting the titles etc. from html instead of href. Href gives wacky results
         """
         Parse the href to display just the job title
         """
@@ -274,27 +271,130 @@ class DuunitoriScrape(tk.Toplevel):
 
     def intoLink(self, href):
         """
-        Turn href into a link
+        Turn href into a link.
         """
         link = "https://www.duunitori.fi" + href
         return link
 
     def openLink(self, event):
+        """
+        Uses the webbrowser module to open clicked link
+        """
+        # Select iid based on item clicked. "Item" means the entire row and event.x and event.y just specify coordinates.
         iid = int((self.__job_list.identify("item", event.x, event.y)))
+        # Links are saved in a list separate from the treeview, just use the iid from the treeview to select link
         url = self.__links[iid]
         webbrowser.open(url)
 
 
-class MonsterScrape(tk.Toplevel):
+class DuunitoriScraperSettings(tk.Toplevel):
+    """
+    Settings for scraping -- widget used:
+    -Number of keywords -- Combobox
+    -Number of locations -- Combobox
+    -Keywords -- Entries
+    -Locations -- Entries
+    -Search description? -- Checkbutton
+    -Must include all keywords? -- Checkbutton
+    """
     def __init__(self):
         super().__init__()
+        # TODO Update some namings
+        # Get padding value from class variable
+        padding = App.settings["padding"]
 
-        self.wm_title("Monster Scraper")
-        self.__cancelButton = tk.Button(self, text="Cancel")
-        self.__cancelButton.pack()
+        self.wm_title("Duunitori scraper settings")
+        self.wm_iconbitmap(App.icon_path)
+
+        # Entry field for keywords, they will need to be separated by commas, and spaces are parsed anyway.
+        self.__keywordLabel = tk.Label(self, text="Keywords (Separated by commas) ")
+        self.__keywordLabel.grid(row=1, column=0, padx=padding, pady=padding)
+        self.__keywordEntry = tk.Entry(self, width=50)
+        self.__keywordEntry.grid(row=1, column=1, padx=padding, pady=padding)
+
+        # Identical to entry field for keywords, but for locations, eg. Cities
+        self.__locationsLabel = tk.Label(self, text="Locations (Separated by commas)")
+        self.__locationsLabel.grid(row=2, column=0, padx=padding, pady=padding)
+        self.__locationsEntry = tk.Entry(self, width=50)
+        self.__locationsEntry.grid(row=2, column=1, padx=padding, pady=padding)
+
+        # Use tkinter boolean var as checkbutton variable
+        self.__includeAllVar = tk.BooleanVar()
+        self.__includeAllCheck = tk.Checkbutton(self, text="Must the result include all keywords?", variable=self.__includeAllVar)
+        self.__includeAllCheck.grid(row=3, column=0, padx=padding, pady=padding)
+
+        # Same as above
+        self.__searchDescVar = tk.BooleanVar()
+        self.__searchDescCheck = tk.Checkbutton(self, text="Also search job description?", variable=self.__searchDescVar)
+        self.__searchDescCheck.grid(row=3, column=1, padx=padding, pady=padding)
+
+        # Buttons for discarding made profile or saving it
+        self.__discardButton = tk.Button(self, text="Discard changes", command=self.discard)
+        self.__discardButton.grid(row=4, column=0, padx=padding, pady=padding)
+
+        self.__saveButton = tk.Button(self, text="Save search", command=self.saveSearch)
+        self.__saveButton.grid(row=4, column=1, padx=padding, pady=padding)
+
+    def discard(self):
+        """
+        Load settings again from config file and destroy window
+        (whole window doesn't affect the main tabs settings so just destroy?)
+        """
+        self.destroy()
+
+    def saveSearch(self):
+        # TODO tweak error handling?
+        # TODO Check if splitting and joining back together makes sense?
+        """
+        Make sure all settings are up to date and then save new config and destroy window
+        """
+        try:
+            # Comma is used as the separator
+            separator = ","
+            # Retrieves a list of words from keyword entry field
+            keywords = self.extractEntries(self.__keywordEntry)
+            # Join them back into a string together with key
+            keywords = "keywords=" + separator.join(keywords) + "\n"
+            # Same as above
+            locations = self.extractEntries(self.__locationsEntry)
+            locations = "locations=" + separator.join(locations) + "\n"
+            # Save keys + and their boolean vars as a string
+            searchDesc = "searchDesc=" + str(self.__searchDescVar.get()) + "\n"
+            includeAll = "includeAll=" + str(self.__includeAllVar.get()) + "\n"
+
+            # All into one list for writeLines()
+            lines = [keywords, locations, searchDesc, includeAll]
+        except Exception as e:  # Error is broad for now
+            messagebox.showerror("Error", e)
+
+        try:
+            path = os.path.dirname(os.getcwd()) + "/search_profiles"
+            file = filedialog.asksaveasfile(mode="w", initialdir=path, title="Save profile", defaultextension=".txt")
+            if file:
+                file.writelines(lines)
+                file.close()
+        except Exception as e:  # Error is broad for now
+            messagebox.showerror("Error", e)
+        finally:
+            # Destroy window when done
+            self.destroy()
+
+    @staticmethod
+    def extractEntries(entryField):
+        """
+        Take entryField as parameter to polymorp method.
+        Get the string inside the entryField.
+        Split with commas as separator.
+        And clean up possible whitespaces.
+        """
+        entryString = entryField.get()
+        entries = entryString.split(",")
+        entries = [entry.strip(" ") for entry in entries]
+        return entries
 
 
 class AlkoScraper(Tab):
+    # TODO Implement
     """
     Alko price/alcohol calculator tab
     """
@@ -321,6 +421,7 @@ class AlkoScraper(Tab):
 
 
 class ToriScraper(Tab):
+    # TODO Implement
     """
     Tori.fi scraper for finding the best deals on stools?
     """
