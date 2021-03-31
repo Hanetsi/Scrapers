@@ -2,6 +2,14 @@
 Goal is to create a desktop app with tkinter for different web scrapers.
 Each is going to be within it's own tab within the main window.
 Includes error pop-ups.
+
+TODO
+Clean up code, maybe break down methods a bit?
+Error handling
+ScrapeThread into a class and a flag for stopping execution?
+Styling
+Help doc
+Links as a hidden column in job_list to make data storage clearer
 """
 
 import tkinter as tk
@@ -52,10 +60,6 @@ class App(tk.Tk):
         self.__toriMenu = tk.Menu(self.__fileMenu, tearoff=False)
         self.__fileMenu.add_cascade(label="Tori.fi", menu=self.__toriMenu)
 
-        # Duunitori menu
-        self.__duunitoriMenu.add_command(label="New search profile", command=DuunitoriScraper.openSettings)
-        self.__duunitoriMenu.add_command(label="Open search profile", command=DuunitoriScraper.loadSearch)
-
         # TODO Implement help documentation
         # Main menu button for help
         self.__mainMenu.add_command(label="Help")
@@ -64,32 +68,21 @@ class App(tk.Tk):
         self.__tabControl = ttk.Notebook(self)
         self.__tabControl.pack(expand=1, fill="both")
 
-        # Create the 3 tabs and pass tab control for target refence
+        # Create the 3 tabs and pass tab control for target reference
         self.__duunitoriScraper = DuunitoriScraper(self.__tabControl)
         self.__alko = AlkoScraper(self.__tabControl)
         self.__tori = ToriScraper(self.__tabControl)
 
+        # Duunitori menu
+        self.__duunitoriMenu.add_command(label="New search profile", command=DuunitoriScraper.openSettings)
+        self.__duunitoriMenu.add_command(label="Open search profile", command=self.__duunitoriScraper.loadSearch)
+
         self.mainloop()
-
-
-class Popup(tk.Toplevel):
-    """
-    Popup class for displaying possible errors (messageboxes make redunaant?)
-    """
-    def __init__(self, error_msg=""):
-        super().__init__()
-        self.wm_title("Error")
-
-        self.__error_msg = tk.Label(self, text=error_msg)
-        self.__error_msg.pack(pady=10, padx=10)
-
-        self.__button = tk.Button(self, text="Okay", command=self.destroy)
-        self.__button.pack(padx=10, pady=10)
 
 
 class Tab(ttk.Frame):
     """
-    Super class for tabs, inherits from ttk Frame widget. Basically handles the tab created as a frame into tab control
+    Super class for tabs, inherits from ttk Frame widget. Basically passes the created tab into tab control
     """
     def __init__(self, target=None, name=None):
         super().__init__(target)
@@ -97,11 +90,9 @@ class Tab(ttk.Frame):
 
 
 class DuunitoriScraper(Tab):
-    # TODO implement default profiles or previous profiles or anything else
-    profile = {"keywords": ["python"],
-               "locations": ["salo"],
+    profile = {"keywords": [""],
+               "locations": [""],
                "searchDesc": False,
-               "includeAll": False
                }
 
     def __init__(self, target):
@@ -109,20 +100,25 @@ class DuunitoriScraper(Tab):
 
         # TODO get rid of these
         self.__links = []
-        self.__keywords = ["python"]
 
         # Frame for holding the job listings and it's scrollbar
         self.__resultFrame = tk.Frame(self)
-        self.__resultFrame.grid(row=0, column=0, columnspan=3)
+        self.__resultFrame.pack(expand=True, fill="both")
 
         # Treeview widget for holding all the found job listings
         self.__job_list = ttk.Treeview(self.__resultFrame)
-        self.__job_list["columns"] = ("desc")
-        self.__job_list.column("#0", width=100, minwidth=20)
-        self.__job_list.column("desc", anchor="w", width=300)
+        self.__job_list["columns"] = ("location", "employer", "vatid", "field")
+        self.__job_list.column("#0", anchor="w", width=200, minwidth=20)
+        self.__job_list.column("location", anchor="w", width=200)
+        self.__job_list.column("employer", anchor="w", width=200)
+        self.__job_list.column("vatid", anchor="center", width=100)
+        self.__job_list.column("field", anchor="w", width=200)
 
-        self.__job_list.heading("#0", text="Company")
-        self.__job_list.heading("desc", text="Job description", anchor="w")
+        self.__job_list.heading("#0", text="Job title", anchor="w")
+        self.__job_list.heading("location", text="Location", anchor="w")
+        self.__job_list.heading("employer", text="Employer", anchor="w")
+        self.__job_list.heading("vatid", text="VatID", anchor="center")
+        self.__job_list.heading("field", text="Field", anchor="w")
 
         # Include a scrollbar
         self.__scrollbar = ttk.Scrollbar(self.__resultFrame)
@@ -131,24 +127,41 @@ class DuunitoriScraper(Tab):
         self.__job_list.configure(yscrollcommand=self.__scrollbar.set)
         # Pack 'em
         self.__scrollbar.pack(side="right", fill="y")
-        self.__job_list.pack()
+        self.__job_list.pack(expand=True, fill="both")
 
         # Event binding to make jobs in the job list clickable
         self.__job_list.bind("<Double-Button-1>", self.openLink)
 
-        self.__startButton = tk.Button(self, text="Start", command=self.startScrape)
-        self.__startButton.grid(row=1, column=0)
+        self.__bottomFrame = tk.Frame(self)
+        self.__bottomFrame.pack(expand=True, fill="both")
+
+        self.__keywordVar = tk.StringVar()
+        self.updateKeywordLabel()
+        self.__keywordLabel = tk.Label(self.__bottomFrame, textvariable=self.__keywordVar)
+        self.__keywordLabel.grid(row=0, column=0, sticky="nsew")
+
+        self.__locationVar = tk.StringVar()
+        self.updateLocationLabel()
+        self.__locationLabel = tk.Label(self.__bottomFrame, textvariable=self.__locationVar)
+        self.__locationLabel.grid(row=0, column=1, sticky="nsew")
+
+        self.__startButton = tk.Button(self.__bottomFrame, text="Start", command=self.startScrape)
+        self.__startButton.grid(row=1, column=0, sticky="nsew")
 
         # Create the cancel button, progress bar, and done label, but don't pack
         self.__page_counter = self.numOfPages()
-        self.__progressbar = ttk.Progressbar(self, orient="horizontal", length=50,
+        self.__progressbar = ttk.Progressbar(self.__bottomFrame, orient="horizontal", length=50,
                                              maximum=self.__page_counter, mode="determinate")
 
-        self.__doneLabel = tk.Label(self, text="Done!")
-        self.__cancelButton = tk.Button(self, text="Cancel", command=self.cancelSearch)
+        self.__doneLabel = tk.Label(self.__bottomFrame, text="Done!")
+        self.__cancelButton = tk.Button(self.__bottomFrame, text="Cancel", command=self.cancelSearch)
 
-    @staticmethod
-    def loadSearch():
+        self.__bottomFrame.grid_columnconfigure(0, weight=1)
+        self.__bottomFrame.grid_columnconfigure(1, weight=1)
+        self.__bottomFrame.grid_rowconfigure(0, weight=1)
+        self.__bottomFrame.grid_rowconfigure(1, weight=1)
+
+    def loadSearch(self):
         """
         Method for loading existing search profiles
         """
@@ -164,7 +177,7 @@ class DuunitoriScraper(Tab):
             content = [line.split("=") for line in content]
             content = [[elem.strip("\n") for elem in line] for line in content]
             content = [[elem.split(",") for elem in line] for line in content]
-            # Since the splits introduce unneccessary list layers into keywords, using some list comprehension to get rid of them
+            # Since the splits introduce unnecessary list layers into keywords, using some list comprehension to get rid of them
             keys = [[elem[0] for elem in inner_content][0] for inner_content in content]
             # Values are easy to fetch, just grab the latter data within and element
             values = [elem[1] for elem in content]
@@ -172,13 +185,15 @@ class DuunitoriScraper(Tab):
             profile = dict(zip(keys, values))
             # Load the parsed profile into class variable
             DuunitoriScraper.profile = profile
+            self.updateKeywordLabel()
+            self.updateLocationLabel()
 
     @staticmethod
     def openSettings():
         """
         Just a pass through
         """
-        settingsWindow = DuunitoriScraperSettings()
+        DuunitoriScraperSettings()
 
     def cancelSearch(self):
         # TODO
@@ -191,7 +206,7 @@ class DuunitoriScraper(Tab):
         """
         Method to get the number of pages to scrape based on keywords etc.
         """
-        url = self.url()
+        url = self.getUrl()
         response = requests.get(url)
         soup = BeautifulSoup(response.content, "html.parser")
         page_counter = soup.find_all("a", class_="pagination__pagenum")
@@ -206,75 +221,88 @@ class DuunitoriScraper(Tab):
         """
         Starts the scraping in another thread to allow windows to function relatively normally.
         """
-        thread = Thread(target=self.scrape)
-        thread.start()
+        self.updateKeywordLabel()
+        self.updateLocationLabel()
+        self.__scrapeThread = Thread(target=self.scrape)
+        self.__scrapeThread.start()
 
     def scrape(self):
         # TODO UPDATE THIS
         """
-        The actual scraping part.
+        Gets the url based on profile with getUrl.
+
         """
         # Set the first iid for the treeview
         iid = 0
-        self.__progressbar.grid(row=1, column=2)
+        self.__page_counter = self.numOfPages()
+        self.__progressbar.configure(maximum=self.__page_counter)
+        self.__progressbar.grid(row=1, column=1, sticky="nsew")
         for i in range(1, self.__page_counter + 1, 1):
-            time.sleep(0.05)
-            # Set url for given page number
-            url = self.url() + "&sivu=" + str(i)
-            # Fetch the site
-            response = requests.get(url)
-            # Turn it into soup using html parser
-            soup = BeautifulSoup(response.content, "html.parser")
-            # Find the element in which the search results reside
-            results = soup.find_all("a", class_="job-box__hover gtm-search-result")
+            url = self.getUrl() + "&sivu=" + str(i)
+
+            site = requests.get(url)
+            soup = BeautifulSoup(site.content, "html.parser")
+            results = soup.findAll("a", class_="job-box__hover gtm-search-result")
+
             for result in results:
-                title = self.parseHref(result["href"])
-                link = self.intoLink(result["href"])
-                self.__links.append(link)
-                self.__job_list.insert(parent="", index="end", iid=iid, text=result["data-company"], values=(title, ) )
-                iid += 1
+                time.sleep(0.1)
+                link = "https://duunitori.fi/" + result["href"]
+                page = requests.get(link)
+                page_soup = BeautifulSoup(page.content, "html.parser")
+                title = page_soup.find("h1", class_="header__title").string
+                info_cell = page_soup.find("div", class_="1/1 grid__cell info-listing")
+                if info_cell is not None:
+                    info_blocks = info_cell.findAll("div", class_="info-listing__block")
+
+                    location = employer = vatid = field = "-"
+
+                    for block in info_blocks:
+                        heading = block.find("h4", class_="info-listing__heading").string
+                        value_block = block.find("div", class_="info-listing__value")
+
+                        if heading == "Työpaikan sijainti":
+                            location = value_block.find("span").string
+                        if heading == "Toiminimi":
+                            employer = value_block.find("span").string
+                        if heading == "Y-tunnus":
+                            vatid = value_block.find("span").string
+                        if heading == "Toimiala":
+                            field = value_block.find("span").string
+
+                    self.__links.append(link)
+                    self.__job_list.insert(parent="", index="end", iid=iid, text=title, values=(location, employer, vatid, field))
+                    iid += 1
             self.__progressbar["value"] = i
             self.update_idletasks()
             self.__progressbar.update()
         # Once done
         self.__progressbar.grid_forget()
-        self.__doneLabel.grid(row=1, column=2)
+        self.__doneLabel.grid(row=1, column=1, sticky="nsew")
 
-    def url(self):
+    def getUrl(self):
         # TODO Update with scrape?
         """
         Method injects given keywords into url query. Also searches the description
         """
-        if len(self.__keywords) != 0:
-            url = "https://duunitori.fi/tyopaikat?haku=" + self.__keywords[0]
-            if len(self.__keywords) > 1:
-                for i in range(1, len(self.__keywords), 1):
-                    print(i)
-                    url += "%3B" + self.__keywords[i]
+        url = "https://duunitori.fi/"
+        kw_list = self.profile["keywords"]
+        if len(kw_list) != 0:
+            url += "tyopaikat?haku=" + kw_list[0]
+            if len(kw_list) > 1:
+                for i in range(1, len(kw_list), 1):
+                    url += "%3B" + kw_list[i]
+
+        loc_list = self.profile["locations"]
+        if len(loc_list) != 0:
+            url += "&alue=" + loc_list[0]
+            if len(loc_list) > 1:
+                for i in range(1, len(loc_list), 1):
+                    url += "%3B" + loc_list[i]
+
+        if self.profile["searchDesc"]:
             url += "&search_also_descr=1"
-            url += "&alue=helsinki"
+
         return url
-
-    def parseHref(self, href):
-        # TODO replace with getting the titles etc. from html instead of href. Href gives wacky results
-        """
-        Parse the href to display just the job title
-        """
-        href = href.split("/")
-        href = href[-1]
-        href = href.split("-")
-        href = href[:-2]
-        href[0] = href[0].capitalize()
-        separator = " "
-        href = separator.join(href)
-        return href
-
-    def intoLink(self, href):
-        """
-        Turn href into a link.
-        """
-        link = "https://www.duunitori.fi" + href
-        return link
 
     def openLink(self, event):
         """
@@ -286,6 +314,16 @@ class DuunitoriScraper(Tab):
         url = self.__links[iid]
         webbrowser.open(url)
 
+    def updateKeywordLabel(self):
+        keywords = self.profile["keywords"]
+        kw_string = ", ".join(keywords)
+        self.__keywordVar.set("Keywords: " + kw_string)
+
+    def updateLocationLabel(self):
+        locations = self.profile["locations"]
+        loc_string = ", ".join(locations)
+        self.__locationVar.set("Locations: " + loc_string)
+
 
 class DuunitoriScraperSettings(tk.Toplevel):
     """
@@ -295,7 +333,6 @@ class DuunitoriScraperSettings(tk.Toplevel):
     -Keywords -- Entries
     -Locations -- Entries
     -Search description? -- Checkbutton
-    -Must include all keywords? -- Checkbutton
     """
     def __init__(self):
         super().__init__()
@@ -318,15 +355,10 @@ class DuunitoriScraperSettings(tk.Toplevel):
         self.__locationsEntry = tk.Entry(self, width=50)
         self.__locationsEntry.grid(row=2, column=1, padx=padding, pady=padding)
 
-        # Use tkinter boolean var as checkbutton variable
-        self.__includeAllVar = tk.BooleanVar()
-        self.__includeAllCheck = tk.Checkbutton(self, text="Must the result include all keywords?", variable=self.__includeAllVar)
-        self.__includeAllCheck.grid(row=3, column=0, padx=padding, pady=padding)
-
         # Same as above
         self.__searchDescVar = tk.BooleanVar()
         self.__searchDescCheck = tk.Checkbutton(self, text="Also search job description?", variable=self.__searchDescVar)
-        self.__searchDescCheck.grid(row=3, column=1, padx=padding, pady=padding)
+        self.__searchDescCheck.grid(row=3, column=0, padx=padding, pady=padding)
 
         # Buttons for discarding made profile or saving it
         self.__discardButton = tk.Button(self, text="Discard changes", command=self.discard)
@@ -360,10 +392,9 @@ class DuunitoriScraperSettings(tk.Toplevel):
             locations = "locations=" + separator.join(locations) + "\n"
             # Save keys + and their boolean vars as a string
             searchDesc = "searchDesc=" + str(self.__searchDescVar.get()) + "\n"
-            includeAll = "includeAll=" + str(self.__includeAllVar.get()) + "\n"
 
             # All into one list for writeLines()
-            lines = [keywords, locations, searchDesc, includeAll]
+            lines = [keywords, locations, searchDesc]
         except Exception as e:  # Error is broad for now
             messagebox.showerror("Error", e)
 
@@ -380,14 +411,14 @@ class DuunitoriScraperSettings(tk.Toplevel):
             self.destroy()
 
     @staticmethod
-    def extractEntries(entryField):
+    def extractEntries(entryfield):
         """
-        Take entryField as parameter to polymorp method.
+        Take entryField as parameter to polymorph method.
         Get the string inside the entryField.
         Split with commas as separator.
         And clean up possible whitespaces.
         """
-        entryString = entryField.get()
+        entryString = entryfield.get()
         entries = entryString.split(",")
         entries = [entry.strip(" ") for entry in entries]
         return entries
@@ -400,8 +431,10 @@ class AlkoScraper(Tab):
     """
     def __init__(self, target):
         super().__init__(target, "Alko")
-        self.__job_list = ttk.Treeview(self)
-        self.__job_list["columns"] = ("desc")
+        self.__frame = tk.Frame(self)
+        self.__frame.pack(expand=True, fill="both")
+        self.__job_list = ttk.Treeview(self.__frame)
+        self.__job_list["columns"] = "desc"
         self.__job_list.column("#0", width=80, minwidth=20)
         self.__job_list.column("desc", anchor="w", width=240)
 
@@ -409,7 +442,7 @@ class AlkoScraper(Tab):
         self.__job_list.heading("desc", text="Job description", anchor="w")
 
         # Include a scrollbar
-        self.__scrollbar = ttk.Scrollbar(self)
+        self.__scrollbar = ttk.Scrollbar(self.__frame)
         self.__scrollbar.pack(side="right", fill="y")
         self.__scrollbar.configure(command=self.__job_list.yview)
         self.__job_list.configure(yscrollcommand=self.__scrollbar.set)
@@ -417,7 +450,7 @@ class AlkoScraper(Tab):
         for i in range(30):
             self.__job_list.insert(parent="", index="end", iid=i, text="Python", values=("Job description here", ))  # Colon to make last column show correctly
 
-        self.__job_list.pack()
+        self.__job_list.pack(expand=True, fill="both")
 
 
 class ToriScraper(Tab):
