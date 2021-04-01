@@ -9,7 +9,6 @@ Error handling
 ScrapeThread into a class and a flag for stopping execution?
 Styling
 Help doc
-Links as a hidden column in job_list to make data storage clearer
 """
 
 import tkinter as tk
@@ -98,16 +97,14 @@ class DuunitoriScraper(Tab):
     def __init__(self, target):
         super().__init__(target, "Duunitori Scraper")
 
-        # TODO get rid of these
-        self.__links = []
-
         # Frame for holding the job listings and it's scrollbar
         self.__resultFrame = tk.Frame(self)
         self.__resultFrame.pack(expand=True, fill="both")
 
         # Treeview widget for holding all the found job listings
         self.__job_list = ttk.Treeview(self.__resultFrame)
-        self.__job_list["columns"] = ("location", "employer", "vatid", "field")
+        self.__job_list["columns"] = ("location", "employer", "vatid", "field", "link")
+        self.__job_list["displaycolumns"] = ("location", "employer", "vatid", "field")
         self.__job_list.column("#0", anchor="w", width=200, minwidth=20)
         self.__job_list.column("location", anchor="w", width=200)
         self.__job_list.column("employer", anchor="w", width=200)
@@ -132,6 +129,7 @@ class DuunitoriScraper(Tab):
         # Event binding to make jobs in the job list clickable
         self.__job_list.bind("<Double-Button-1>", self.openLink)
 
+        # Use another frame for the rest of the widgets for easier resizing
         self.__bottomFrame = tk.Frame(self)
         self.__bottomFrame.pack(expand=True, fill="both")
 
@@ -156,6 +154,7 @@ class DuunitoriScraper(Tab):
         self.__doneLabel = tk.Label(self.__bottomFrame, text="Done!")
         self.__cancelButton = tk.Button(self.__bottomFrame, text="Cancel", command=self.cancelSearch)
 
+        # Set the grid weights for rezising to work
         self.__bottomFrame.grid_columnconfigure(0, weight=1)
         self.__bottomFrame.grid_columnconfigure(1, weight=1)
         self.__bottomFrame.grid_rowconfigure(0, weight=1)
@@ -163,7 +162,8 @@ class DuunitoriScraper(Tab):
 
     def loadSearch(self):
         """
-        Method for loading existing search profiles
+        Method for loading existing search profiles.
+        Loads the file and parses it, then updates the profile dictionary.
         """
         # TODO error handling
         # Get the path for profiles folder
@@ -205,6 +205,7 @@ class DuunitoriScraper(Tab):
     def numOfPages(self):
         """
         Method to get the number of pages to scrape based on keywords etc.
+        Works by doing the initial search and locating the last page number from the bottom.
         """
         url = self.getUrl()
         response = requests.get(url)
@@ -229,8 +230,10 @@ class DuunitoriScraper(Tab):
     def scrape(self):
         # TODO UPDATE THIS
         """
-        Gets the url based on profile with getUrl.
-
+        Goes through the results one by one, opening them, and extracting data in the info cell.
+        eg. Location, business name, VatID, and field.
+        Updates all the found data into the treeview, and stores links.
+        Also updates the progress bar according to search page number.
         """
         # Set the first iid for the treeview
         iid = 0
@@ -269,8 +272,7 @@ class DuunitoriScraper(Tab):
                         if heading == "Toimiala":
                             field = value_block.find("span").string
 
-                    self.__links.append(link)
-                    self.__job_list.insert(parent="", index="end", iid=iid, text=title, values=(location, employer, vatid, field))
+                    self.__job_list.insert(parent="", index="end", iid=iid, text=title, values=(location, employer, vatid, field, link))
                     iid += 1
             self.__progressbar["value"] = i
             self.update_idletasks()
@@ -282,7 +284,8 @@ class DuunitoriScraper(Tab):
     def getUrl(self):
         # TODO Update with scrape?
         """
-        Method injects given keywords into url query. Also searches the description
+        Method injects given keywords and locations into url query.
+        Also checks for "searchDesc".
         """
         url = "https://duunitori.fi/"
         kw_list = self.profile["keywords"]
@@ -311,7 +314,8 @@ class DuunitoriScraper(Tab):
         # Select iid based on item clicked. "Item" means the entire row and event.x and event.y just specify coordinates.
         iid = int((self.__job_list.identify("item", event.x, event.y)))
         # Links are saved in a list separate from the treeview, just use the iid from the treeview to select link
-        url = self.__links[iid]
+        item = self.__job_list.item(iid)
+        url = item["values"][-1]
         webbrowser.open(url)
 
     def updateKeywordLabel(self):
