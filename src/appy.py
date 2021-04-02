@@ -8,7 +8,6 @@ Clean up code, maybe break down methods a bit?
 Error handling
 ScrapeThread into a class and a flag for stopping execution?
 Styling
-Help doc
 """
 
 import tkinter as tk
@@ -61,7 +60,7 @@ class App(tk.Tk):
 
         # TODO Implement help documentation
         # Main menu button for help
-        self.__mainMenu.add_command(label="Help")
+        self.__mainMenu.add_command(label="Help", command=self.openHelp)
 
         # Notebook widget to use as tab control in the window
         self.__tabControl = ttk.Notebook(self)
@@ -71,12 +70,17 @@ class App(tk.Tk):
         self.__duunitoriScraper = DuunitoriScraper(self.__tabControl)
         self.__alko = AlkoScraper(self.__tabControl)
         self.__tori = ToriScraper(self.__tabControl)
+        self.__reddit  = RedditScraper(self.__tabControl)
 
         # Duunitori menu
         self.__duunitoriMenu.add_command(label="New search profile", command=DuunitoriScraper.openSettings)
         self.__duunitoriMenu.add_command(label="Open search profile", command=self.__duunitoriScraper.loadSearch)
 
         self.mainloop()
+
+    @staticmethod
+    def openHelp():
+        Help()
 
 
 class Tab(ttk.Frame):
@@ -89,6 +93,7 @@ class Tab(ttk.Frame):
 
 
 class DuunitoriScraper(Tab):
+    iid = 0
     profile = {"keywords": [""],
                "locations": [""],
                "searchDesc": False,
@@ -224,11 +229,13 @@ class DuunitoriScraper(Tab):
         """
         self.updateKeywordLabel()
         self.updateLocationLabel()
+        self.__page_counter = self.numOfPages()
+        self.__progressbar.configure(maximum=self.__page_counter)
+        self.__progressbar.grid(row=1, column=1, sticky="nsew")
         self.__scrapeThread = Thread(target=self.scrape)
         self.__scrapeThread.start()
 
     def scrape(self):
-        # TODO UPDATE THIS
         """
         Goes through the results one by one, opening them, and extracting data in the info cell.
         eg. Location, business name, VatID, and field.
@@ -237,9 +244,7 @@ class DuunitoriScraper(Tab):
         """
         # Set the first iid for the treeview
         iid = 0
-        self.__page_counter = self.numOfPages()
-        self.__progressbar.configure(maximum=self.__page_counter)
-        self.__progressbar.grid(row=1, column=1, sticky="nsew")
+
         for i in range(1, self.__page_counter + 1, 1):
             url = self.getUrl() + "&sivu=" + str(i)
 
@@ -281,28 +286,28 @@ class DuunitoriScraper(Tab):
         self.__progressbar.grid_forget()
         self.__doneLabel.grid(row=1, column=1, sticky="nsew")
 
-    def getUrl(self):
-        # TODO Update with scrape?
+    @staticmethod
+    def getUrl():
         """
         Method injects given keywords and locations into url query.
         Also checks for "searchDesc".
         """
         url = "https://duunitori.fi/"
-        kw_list = self.profile["keywords"]
+        kw_list = DuunitoriScraper.profile["keywords"]
         if len(kw_list) != 0:
             url += "tyopaikat?haku=" + kw_list[0]
             if len(kw_list) > 1:
                 for i in range(1, len(kw_list), 1):
                     url += "%3B" + kw_list[i]
 
-        loc_list = self.profile["locations"]
+        loc_list = DuunitoriScraper.profile["locations"]
         if len(loc_list) != 0:
             url += "&alue=" + loc_list[0]
             if len(loc_list) > 1:
                 for i in range(1, len(loc_list), 1):
                     url += "%3B" + loc_list[i]
 
-        if self.profile["searchDesc"]:
+        if DuunitoriScraper.profile["searchDesc"]:
             url += "&search_also_descr=1"
 
         return url
@@ -327,6 +332,23 @@ class DuunitoriScraper(Tab):
         locations = self.profile["locations"]
         loc_string = ", ".join(locations)
         self.__locationVar.set("Locations: " + loc_string)
+
+
+class Scrape(Thread):
+    """
+    Getters and setters for communicating with the tab?
+    Check for stop flag and end of each iteration?
+    """
+    stop_flag = False
+
+    def __init__(self):
+        super().__init__(target=self.scrape)
+
+    def stop(self):
+        pass
+
+    def scrape(self):
+        pass
 
 
 class DuunitoriScraperSettings(tk.Toplevel):
@@ -435,26 +457,6 @@ class AlkoScraper(Tab):
     """
     def __init__(self, target):
         super().__init__(target, "Alko")
-        self.__frame = tk.Frame(self)
-        self.__frame.pack(expand=True, fill="both")
-        self.__job_list = ttk.Treeview(self.__frame)
-        self.__job_list["columns"] = "desc"
-        self.__job_list.column("#0", width=80, minwidth=20)
-        self.__job_list.column("desc", anchor="w", width=240)
-
-        self.__job_list.heading("#0", text="Keyword")
-        self.__job_list.heading("desc", text="Job description", anchor="w")
-
-        # Include a scrollbar
-        self.__scrollbar = ttk.Scrollbar(self.__frame)
-        self.__scrollbar.pack(side="right", fill="y")
-        self.__scrollbar.configure(command=self.__job_list.yview)
-        self.__job_list.configure(yscrollcommand=self.__scrollbar.set)
-
-        for i in range(30):
-            self.__job_list.insert(parent="", index="end", iid=i, text="Python", values=("Job description here", ))  # Colon to make last column show correctly
-
-        self.__job_list.pack(expand=True, fill="both")
 
 
 class ToriScraper(Tab):
@@ -464,6 +466,48 @@ class ToriScraper(Tab):
     """
     def __init__(self, target):
         super().__init__(target, "Tori.fi")
+
+
+class RedditScraper(Tab):
+    # TODO Implement
+    """
+    Reddit scraper??
+    """
+    def __init__(self, target):
+        super().__init__(target, "Reddit")
+
+
+class Help(tk.Toplevel):
+    def __init__(self):
+        super().__init__()
+
+        self.wm_title("Help")
+        self.wm_iconbitmap(App.icon_path)
+
+        self.__DuunitoriHelpFrame = tk.LabelFrame(self, text="Duunitori Scraper")
+        self.__DuunitoriHelpFrame.pack(anchor="nw")
+
+        self.__duunitori_help_text = "HOW TO USE:\n" \
+                                     "You must first create and open a new search profile\n" \
+                                     "or if you have an existing search profile, you can just open it.\n" \
+                                     "\n" \
+                                     "To create a new search profile:\n" \
+                                     "1. Go to File -> Duunitori scraper -> New search profile\n" \
+                                     "2. Enter the wanted search options\n" \
+                                     "(Empty fields will search all, eg. empty location searches everywhere)\n" \
+                                     "3. Click Save search\n" \
+                                     "\n" \
+                                     "To open an existing search profile:\n" \
+                                     "1. Go to File -> Duunitori scraper -> Open search profile\n" \
+                                     "2. Select the text file containing your search profile\n" \
+                                     "3. Click Open\n" \
+                                     "\n" \
+                                     "After opening a search profile, your keywords and locations should\n" \
+                                     "be visible bottom of the window. Then you can just press Start\n" \
+                                     "to begin scraping. The results will show in your window.\n" \
+                                     "You can click any result to open it in your default browser"
+        self.__duunitori_help_label = tk.Label(self.__DuunitoriHelpFrame, text=self.__duunitori_help_text)
+        self.__duunitori_help_label.pack(anchor="nw")
 
 
 if __name__ == "__main__":
