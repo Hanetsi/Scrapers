@@ -3,13 +3,7 @@ Author: Eelis Pyörre
 
 Goal is to create a desktop app with tkinter for different web scrapers.
 Each is going to be within it's own tab within the main window.
-Includes error pop-ups.
-
-TODO
-Clean up code, maybe break down methods a bit?
-Error handling
-Use context managers for file reads etc.?
-Styling
+This is an initial version with just 1 scraper.
 """
 
 import tkinter as tk
@@ -22,15 +16,6 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import webbrowser
-
-
-class Style(ttk.Style):
-    """
-    Style class for the main window to use, yet to be implemented
-    """
-
-    def __init__(self):
-        super().__init__()
 
 
 class App(tk.Tk):
@@ -56,12 +41,7 @@ class App(tk.Tk):
         self.__mainMenu.add_cascade(label="File", menu=self.__fileMenu)
         self.__duunitoriMenu = tk.Menu(self.__fileMenu, tearoff=False)
         self.__fileMenu.add_cascade(label="Duunitori scraper", menu=self.__duunitoriMenu)
-        self.__alkoMenu = tk.Menu(self.__fileMenu, tearoff=False)
-        self.__fileMenu.add_cascade(label="Alko prices", menu=self.__alkoMenu)
-        self.__toriMenu = tk.Menu(self.__fileMenu, tearoff=False)
-        self.__fileMenu.add_cascade(label="Tori.fi", menu=self.__toriMenu)
 
-        # TODO Implement help documentation
         # Main menu button for help
         self.__mainMenu.add_command(label="Help", command=self.openHelp)
 
@@ -71,9 +51,6 @@ class App(tk.Tk):
 
         # Create the 3 tabs and pass tab control for target reference
         self.__duunitoriScraper = DuunitoriScraper(self.__tabControl)
-        self.__alko = AlkoScraper(self.__tabControl)
-        self.__tori = ToriScraper(self.__tabControl)
-        self.__reddit = RedditScraper(self.__tabControl)
 
         # Duunitori menu
         self.__duunitoriMenu.add_command(label="New search profile", command=DuunitoriScraper.openSettings)
@@ -392,7 +369,7 @@ class DuunitoriScraperSettings(tk.Toplevel):
 
     def __init__(self):
         super().__init__()
-        # TODO Update some namings
+
         # Get padding value from class variable
         padding = App.settings["padding"]
 
@@ -432,8 +409,6 @@ class DuunitoriScraperSettings(tk.Toplevel):
         self.destroy()
 
     def saveSearch(self):
-        # TODO tweak error handling?
-        # TODO Check if splitting and joining back together makes sense?
         """
         Make sure all settings are up to date and then save new config and destroy window
         """
@@ -452,19 +427,14 @@ class DuunitoriScraperSettings(tk.Toplevel):
 
             # All into one list for writeLines()
             lines = [keywords, locations, searchDesc]
-        except Exception as e:  # Error is broad for now
-            messagebox.showerror("Error", e)
 
-        try:
             path = os.path.dirname(os.getcwd()) + "/search_profiles"
-            file = filedialog.asksaveasfile(mode="w", initialdir=path, title="Save profile", defaultextension=".txt")
-            if file:
-                file.writelines(lines)
-                file.close()
-        except Exception as e:  # Error is broad for now
+            with filedialog.asksaveasfile(mode="w", initialdir=path, title="Save profile", defaultextension=".txt") as f:
+                f.writelines(lines)
+
+        except Exception as e:
             messagebox.showerror("Error", e)
         finally:
-            # Destroy window when done
             self.destroy()
 
     @staticmethod
@@ -479,36 +449,6 @@ class DuunitoriScraperSettings(tk.Toplevel):
         entries = entryString.split(",")
         entries = [entry.strip(" ") for entry in entries]
         return entries
-
-
-class AlkoScraper(Tab):
-    # TODO Implement
-    """
-    Alko price/alcohol calculator tab
-    """
-
-    def __init__(self, target):
-        super().__init__(target, "Alko")
-
-
-class ToriScraper(Tab):
-    # TODO Implement
-    """
-    Tori.fi scraper for finding the best deals on stools?
-    """
-
-    def __init__(self, target):
-        super().__init__(target, "Tori.fi")
-
-
-class RedditScraper(Tab):
-    # TODO Implement
-    """
-    Reddit scraper??
-    """
-
-    def __init__(self, target):
-        super().__init__(target, "Reddit")
 
 
 class Help(tk.Toplevel):
