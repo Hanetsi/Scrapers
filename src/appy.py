@@ -6,7 +6,6 @@ Includes error pop-ups.
 TODO
 Clean up code, maybe break down methods a bit?
 Error handling
-ScrapeThread into a class and a flag for stopping execution?
 Styling
 """
 
@@ -26,6 +25,7 @@ class Style(ttk.Style):
     """
     Style class for the main window to use, yet to be implemented
     """
+
     def __init__(self):
         super().__init__()
 
@@ -70,7 +70,7 @@ class App(tk.Tk):
         self.__duunitoriScraper = DuunitoriScraper(self.__tabControl)
         self.__alko = AlkoScraper(self.__tabControl)
         self.__tori = ToriScraper(self.__tabControl)
-        self.__reddit  = RedditScraper(self.__tabControl)
+        self.__reddit = RedditScraper(self.__tabControl)
 
         # Duunitori menu
         self.__duunitoriMenu.add_command(label="New search profile", command=DuunitoriScraper.openSettings)
@@ -87,12 +87,14 @@ class Tab(ttk.Frame):
     """
     Super class for tabs, inherits from ttk Frame widget. Basically passes the created tab into tab control
     """
+
     def __init__(self, target=None, name=None):
         super().__init__(target)
         target.add(self, text=name)
 
 
 class DuunitoriScraper(Tab):
+    stop_scrape = True
     iid = 0
     profile = {"keywords": [""],
                "locations": [""],
@@ -174,7 +176,8 @@ class DuunitoriScraper(Tab):
         # Get the path for profiles folder
         path = os.path.dirname(os.getcwd()) + "/search_profiles"
         # Open file
-        file = filedialog.askopenfile(mode="r", initialdir=path, title="Select search profile", filetypes=((".txt", "*.txt"),))
+        file = filedialog.askopenfile(mode="r", initialdir=path, title="Select search profile",
+                                      filetypes=((".txt", "*.txt"),))
         if file:  # Only if a file was opened
             content = file.readlines()
             file.close()
@@ -205,14 +208,18 @@ class DuunitoriScraper(Tab):
         """
         Cancel the search
         """
-        pass
+        DuunitoriScraper.stop_scrape = True
+        print("Canceled search")
+        self.__cancelButton.grid_forget()
+        self.__startButton.grid(row=1, column=0, sticky="nsew")
 
-    def numOfPages(self):
+    @staticmethod
+    def numOfPages():
         """
         Method to get the number of pages to scrape based on keywords etc.
         Works by doing the initial search and locating the last page number from the bottom.
         """
-        url = self.getUrl()
+        url = DuunitoriScraper.getUrl()
         response = requests.get(url)
         soup = BeautifulSoup(response.content, "html.parser")
         page_counter = soup.find_all("a", class_="pagination__pagenum")
@@ -227,8 +234,9 @@ class DuunitoriScraper(Tab):
         """
         Starts the scraping in another thread to allow windows to function relatively normally.
         """
-        self.updateKeywordLabel()
-        self.updateLocationLabel()
+        DuunitoriScraper.stop_scrape = False
+        self.__startButton.grid_forget()
+        self.__cancelButton.grid(row=1, column=0, sticky="nsew")
         self.__page_counter = self.numOfPages()
         self.__progressbar.configure(maximum=self.__page_counter)
         self.__progressbar.grid(row=1, column=1, sticky="nsew")
@@ -246,6 +254,8 @@ class DuunitoriScraper(Tab):
         iid = 0
 
         for i in range(1, self.__page_counter + 1, 1):
+            if DuunitoriScraper.stop_scrape:
+                break
             url = self.getUrl() + "&sivu=" + str(i)
 
             site = requests.get(url)
@@ -253,6 +263,8 @@ class DuunitoriScraper(Tab):
             results = soup.findAll("a", class_="job-box__hover gtm-search-result")
 
             for result in results:
+                if DuunitoriScraper.stop_scrape:
+                    break
                 time.sleep(0.1)
                 link = "https://duunitori.fi/" + result["href"]
                 page = requests.get(link)
@@ -277,7 +289,8 @@ class DuunitoriScraper(Tab):
                         if heading == "Toimiala":
                             field = value_block.find("span").string
 
-                    self.__job_list.insert(parent="", index="end", iid=iid, text=title, values=(location, employer, vatid, field, link))
+                    self.__job_list.insert(parent="", index="end", iid=iid, text=title,
+                                           values=(location, employer, vatid, field, link))
                     iid += 1
             self.__progressbar["value"] = i
             self.update_idletasks()
@@ -334,23 +347,6 @@ class DuunitoriScraper(Tab):
         self.__locationVar.set("Locations: " + loc_string)
 
 
-class Scrape(Thread):
-    """
-    Getters and setters for communicating with the tab?
-    Check for stop flag and end of each iteration?
-    """
-    stop_flag = False
-
-    def __init__(self):
-        super().__init__(target=self.scrape)
-
-    def stop(self):
-        pass
-
-    def scrape(self):
-        pass
-
-
 class DuunitoriScraperSettings(tk.Toplevel):
     """
     Settings for scraping -- widget used:
@@ -360,6 +356,7 @@ class DuunitoriScraperSettings(tk.Toplevel):
     -Locations -- Entries
     -Search description? -- Checkbutton
     """
+
     def __init__(self):
         super().__init__()
         # TODO Update some namings
@@ -383,7 +380,8 @@ class DuunitoriScraperSettings(tk.Toplevel):
 
         # Same as above
         self.__searchDescVar = tk.BooleanVar()
-        self.__searchDescCheck = tk.Checkbutton(self, text="Also search job description?", variable=self.__searchDescVar)
+        self.__searchDescCheck = tk.Checkbutton(self, text="Also search job description?",
+                                                variable=self.__searchDescVar)
         self.__searchDescCheck.grid(row=3, column=0, padx=padding, pady=padding)
 
         # Buttons for discarding made profile or saving it
@@ -455,6 +453,7 @@ class AlkoScraper(Tab):
     """
     Alko price/alcohol calculator tab
     """
+
     def __init__(self, target):
         super().__init__(target, "Alko")
 
@@ -464,6 +463,7 @@ class ToriScraper(Tab):
     """
     Tori.fi scraper for finding the best deals on stools?
     """
+
     def __init__(self, target):
         super().__init__(target, "Tori.fi")
 
@@ -473,6 +473,7 @@ class RedditScraper(Tab):
     """
     Reddit scraper??
     """
+
     def __init__(self, target):
         super().__init__(target, "Reddit")
 
