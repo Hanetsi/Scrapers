@@ -1,4 +1,6 @@
 """
+Author: Eelis Pyörre
+
 Goal is to create a desktop app with tkinter for different web scrapers.
 Each is going to be within it's own tab within the main window.
 Includes error pop-ups.
@@ -6,6 +8,7 @@ Includes error pop-ups.
 TODO
 Clean up code, maybe break down methods a bit?
 Error handling
+Use context managers for file reads etc.?
 Styling
 """
 
@@ -111,7 +114,9 @@ class DuunitoriScraper(Tab):
         # Treeview widget for holding all the found job listings
         self.__job_list = ttk.Treeview(self.__resultFrame)
         self.__job_list["columns"] = ("location", "employer", "vatid", "field", "link")
+        # Leave link column invisible
         self.__job_list["displaycolumns"] = ("location", "employer", "vatid", "field")
+
         self.__job_list.column("#0", anchor="w", width=200, minwidth=20)
         self.__job_list.column("location", anchor="w", width=200)
         self.__job_list.column("employer", anchor="w", width=200)
@@ -124,9 +129,8 @@ class DuunitoriScraper(Tab):
         self.__job_list.heading("vatid", text="VatID", anchor="center")
         self.__job_list.heading("field", text="Field", anchor="w")
 
-        # Include a scrollbar
+        # Include a vertical scrollbar in treeveiw
         self.__scrollbar = ttk.Scrollbar(self.__resultFrame)
-        # Set scrollbar to command job lists vertical view
         self.__scrollbar.configure(command=self.__job_list.yview)
         self.__job_list.configure(yscrollcommand=self.__scrollbar.set)
         # Pack 'em
@@ -150,16 +154,14 @@ class DuunitoriScraper(Tab):
         self.__locationLabel = tk.Label(self.__bottomFrame, textvariable=self.__locationVar)
         self.__locationLabel.grid(row=0, column=1, sticky="nsew")
 
-        self.__startButton = tk.Button(self.__bottomFrame, text="Start", command=self.startScrape)
-        self.__startButton.grid(row=1, column=0, sticky="nsew")
-
         # Create the cancel button, progress bar, and done label, but don't pack
-        self.__page_counter = self.numOfPages()
-        self.__progressbar = ttk.Progressbar(self.__bottomFrame, orient="horizontal", length=50,
-                                             maximum=self.__page_counter, mode="determinate")
+        self.__progressbar = ttk.Progressbar(self.__bottomFrame, orient="horizontal", mode="determinate")
 
         self.__doneLabel = tk.Label(self.__bottomFrame, text="Done!")
         self.__cancelButton = tk.Button(self.__bottomFrame, text="Cancel", command=self.cancelSearch)
+
+        self.__startButton = tk.Button(self.__bottomFrame, text="Start", command=self.startScrape)
+        self.showStartButton()
 
         # Set the grid weights for rezising to work
         self.__bottomFrame.grid_columnconfigure(0, weight=1)
@@ -172,29 +174,44 @@ class DuunitoriScraper(Tab):
         Method for loading existing search profiles.
         Loads the file and parses it, then updates the profile dictionary.
         """
-        # TODO error handling
         # Get the path for profiles folder
         path = os.path.dirname(os.getcwd()) + "/search_profiles"
-        # Open file
-        file = filedialog.askopenfile(mode="r", initialdir=path, title="Select search profile",
-                                      filetypes=((".txt", "*.txt"),))
-        if file:  # Only if a file was opened
-            content = file.readlines()
-            file.close()
-            # First 3 splits lines to lists that contains the key: value pairs
-            content = [line.split("=") for line in content]
-            content = [[elem.strip("\n") for elem in line] for line in content]
-            content = [[elem.split(",") for elem in line] for line in content]
-            # Since the splits introduce unnecessary list layers into keywords, using some list comprehension to get rid of them
-            keys = [[elem[0] for elem in inner_content][0] for inner_content in content]
-            # Values are easy to fetch, just grab the latter data within and element
-            values = [elem[1] for elem in content]
-            # Zip makes keys and values into a tuple, that dict can make a dictionary from
-            profile = dict(zip(keys, values))
-            # Load the parsed profile into class variable
-            DuunitoriScraper.profile = profile
-            self.updateKeywordLabel()
-            self.updateLocationLabel()
+
+        with filedialog.askopenfile(mode="r", initialdir=path, title="Select search profile",
+                                                filetypes=((".txt", "*.txt"),)) as f:
+            try:
+                content = f.readlines()
+                # First 3 splits lines to lists that contains the key: value pairs
+                content = [line.split("=") for line in content]
+                content = [[elem.strip("\n") for elem in line] for line in content]
+                content = [[elem.split(",") for elem in line] for line in content]
+                # Since the splits introduce unnecessary list layers into keywords, using some list comprehension to get rid of them
+                keys = [[elem[0] for elem in inner_content][0] for inner_content in content]
+                # Values are easy to fetch, just grab the latter data within and element
+                values = [elem[1] for elem in content]
+                # Zip makes keys and values into a tuple, that dict can make a dictionary from
+                profile = dict(zip(keys, values))
+
+                # Only update the profile if all 3 keywords can be found in the text file
+                required_keys = ["keywords", "locations", "searchDesc"]
+                for key in required_keys:
+                    if key not in profile.keys():
+                        raise ValueError
+                    else:
+                        DuunitoriScraper.profile = profile
+
+            except KeyError as e:
+                messagebox.showerror(title="KeyError", message=e)
+
+            except ValueError:
+                messagebox.showerror(title="Error", message="Incorrect search profile formatting")
+
+            except Exception as e:
+                messagebox.showerror(title="Error", message=e)
+
+            finally:
+                self.updateKeywordLabel()
+                self.updateLocationLabel()
 
     @staticmethod
     def openSettings():
@@ -209,9 +226,7 @@ class DuunitoriScraper(Tab):
         Cancel the search
         """
         DuunitoriScraper.stop_scrape = True
-        print("Canceled search")
-        self.__cancelButton.grid_forget()
-        self.__startButton.grid(row=1, column=0, sticky="nsew")
+        self.showStartButton()
 
     @staticmethod
     def numOfPages():
@@ -235,11 +250,9 @@ class DuunitoriScraper(Tab):
         Starts the scraping in another thread to allow windows to function relatively normally.
         """
         DuunitoriScraper.stop_scrape = False
-        self.__startButton.grid_forget()
-        self.__cancelButton.grid(row=1, column=0, sticky="nsew")
+        self.showCancelButton()
         self.__page_counter = self.numOfPages()
-        self.__progressbar.configure(maximum=self.__page_counter)
-        self.__progressbar.grid(row=1, column=1, sticky="nsew")
+        self.initProgressBar(maximum=self.__page_counter)
         self.__scrapeThread = Thread(target=self.scrape)
         self.__scrapeThread.start()
 
@@ -250,13 +263,11 @@ class DuunitoriScraper(Tab):
         Updates all the found data into the treeview, and stores links.
         Also updates the progress bar according to search page number.
         """
-        # Set the first iid for the treeview
-        iid = 0
 
-        for i in range(1, self.__page_counter + 1, 1):
+        for page_num in range(1, self.__page_counter + 1, 1):
             if DuunitoriScraper.stop_scrape:
                 break
-            url = self.getUrl() + "&sivu=" + str(i)
+            url = self.getUrl() + "&sivu=" + str(page_num)
 
             site = requests.get(url)
             soup = BeautifulSoup(site.content, "html.parser")
@@ -289,15 +300,13 @@ class DuunitoriScraper(Tab):
                         if heading == "Toimiala":
                             field = value_block.find("span").string
 
-                    self.__job_list.insert(parent="", index="end", iid=iid, text=title,
+                    self.__job_list.insert(parent="", index="end", iid=DuunitoriScraper.iid, text=title,
                                            values=(location, employer, vatid, field, link))
-                    iid += 1
-            self.__progressbar["value"] = i
-            self.update_idletasks()
-            self.__progressbar.update()
-        # Once done
-        self.__progressbar.grid_forget()
-        self.__doneLabel.grid(row=1, column=1, sticky="nsew")
+                    DuunitoriScraper.iid += 1
+
+            self.updateProgressBar(value=page_num)
+        self.showStartButton()
+        self.showDoneLabel()
 
     @staticmethod
     def getUrl():
@@ -331,9 +340,10 @@ class DuunitoriScraper(Tab):
         """
         # Select iid based on item clicked. "Item" means the entire row and event.x and event.y just specify coordinates.
         iid = int((self.__job_list.identify("item", event.x, event.y)))
-        # Links are saved in a list separate from the treeview, just use the iid from the treeview to select link
+        # Fetch the link from links column of the item based on iid
         item = self.__job_list.item(iid)
         url = item["values"][-1]
+
         webbrowser.open(url)
 
     def updateKeywordLabel(self):
@@ -345,6 +355,29 @@ class DuunitoriScraper(Tab):
         locations = self.profile["locations"]
         loc_string = ", ".join(locations)
         self.__locationVar.set("Locations: " + loc_string)
+
+    def showStartButton(self):
+        self.__cancelButton.grid_forget()
+        self.__startButton.grid(row=1, column=0, sticky="nsew")
+
+    def showCancelButton(self):
+        self.__startButton.grid_forget()
+        self.__cancelButton.grid(row=1, column=0, sticky="nsew")
+
+    def updateProgressBar(self, value=0):
+        self.__progressbar["value"] = value
+        self.update_idletasks()
+        self.__progressbar.update()
+
+    def showDoneLabel(self):
+        self.__progressbar.grid_forget()
+        self.__doneLabel.grid(row=1, column=1, sticky="nsew")
+
+    def initProgressBar(self, maximum=0):
+        self.__doneLabel.grid_forget()
+        self.__progressbar.configure(maximum=maximum)
+        self.__progressbar["value"] = 0
+        self.__progressbar.grid(row=1, column=1, sticky="nsew")
 
 
 class DuunitoriScraperSettings(tk.Toplevel):
@@ -503,10 +536,16 @@ class Help(tk.Toplevel):
                                      "2. Select the text file containing your search profile\n" \
                                      "3. Click Open\n" \
                                      "\n" \
-                                     "After opening a search profile, your keywords and locations should\n" \
-                                     "be visible bottom of the window. Then you can just press Start\n" \
-                                     "to begin scraping. The results will show in your window.\n" \
-                                     "You can click any result to open it in your default browser"
+                                     "After opening a search profile, your keywords and locations should" \
+                                     "be visible in the bottom of the window.\n" \
+                                     "\n" \
+                                     "Then you can just press Start to begin scraping.\n" \
+                                     "\n" \
+                                     " The results will show in your window.\n" \
+                                     "\n" \
+                                     "You can click any result to open it in your default browser\n" \
+                                     "\n" \
+                                     "To cancel a search, press cancel"
         self.__duunitori_help_label = tk.Label(self.__DuunitoriHelpFrame, text=self.__duunitori_help_text)
         self.__duunitori_help_label.pack(anchor="nw")
 
